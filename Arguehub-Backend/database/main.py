@@ -1,10 +1,10 @@
 from sqlalchemy import create_engine
-from sqlalchemy import text, Column, Integer, Enum, Text, DateTime
+from sqlalchemy import text, Column, Integer, Enum as SqlEnum, Text, DateTime
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from sqlalchemy.ext.declarative import declarative_base
-
-
+from datetime import datetime, timezone
+from enum import Enum as PyEnum
 
 # engine = create_engine('sqlite:///example.db')
 
@@ -13,7 +13,7 @@ from sqlalchemy.ext.declarative import declarative_base
 #     print(result)
 
 
-def main():
+def main_core():
     engine = create_engine('sqlite:///example.db')
 
     with engine.connect() as connection:
@@ -38,23 +38,51 @@ def main():
 
 Base = declarative_base()
 
+class SenderType(PyEnum):
+    USER = "User"
+    AGENT = "Agent"
+
 class AgentChatHistory(Base):
     __tablename__ = "agent_chat_history"
 
-    sessionId = Column(Integer, primary_key=True)
-    sender = Column(Enum("User", "Agent"))
+    message_id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer)
+    sender = Column(SqlEnum(SenderType))
     content = Column(Text)
-    timestamp = Column(DateTime, default=func.now())
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f"<AgentChatHistory(id={self.sessionId}, name='{self.sender}', email='{self.content}', timestamp='{self.timestamp}')>"
-    
+        return f"<AgentChatHistory(message_id={self.message_id}, session_id={self.session_id}, sender='{self.sender.value}', content='{self.content}', timestamp='{self.timestamp}')>"
+
+class AgentHistorySessionId(Base):
+    __tablename__ = "agent_chat_history_session_id"
+
+    userI
+# CRUD
+def getSessionId(userId):
+
+def addToAgentChatHistory(message):
+
+
 def main():
-    # using ORM
-    engine = create_engine()
+    engine = create_engine("sqlite:///example.db")
+    Base.metadata.create_all(engine)
+
     session = Session(bind=engine)
-    # make it work, that other user is not accessing other users chat
+
+    new_message_1 = AgentChatHistory(session_id=1, sender=SenderType.USER, content="Hello buddy")
+    new_message_2 = AgentChatHistory(session_id=1, sender=SenderType.AGENT, content="Hi")
+
+    session.add(new_message_1)
+    session.commit()
+    session.add(new_message_2)
+    session.commit()
+
+    rows = session.query(AgentChatHistory).all()
+    for row in rows:
+        print(row)
+
+
     
-    # session.
-    
-main()
+
+
