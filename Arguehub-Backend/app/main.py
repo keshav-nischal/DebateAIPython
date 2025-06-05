@@ -1,9 +1,7 @@
 from fastapi import FastAPI
 import uvicorn
 
-import sys
-print(sys.path)
-from router.auth import router as auth_router
+from api.v1.auth import router as auth_router
 
 # print("\n".join(router.path))
 

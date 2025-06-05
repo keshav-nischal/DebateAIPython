@@ -1,8 +1,8 @@
 import redis
-import 
 
 def generateAgentChatSessionId():
     return 1231
+
 def redisMain():
     print("working")
     r = redis.Redis(host='localhost', port=6379, decode_responses=True)
