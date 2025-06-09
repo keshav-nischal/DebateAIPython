@@ -1,89 +1,104 @@
-from database import get_sql_session
-from models import User
-from crud.user import get_user, add_new_user
+from abc import ABC, abstractmethod
 import bcrypt
 import datetime
 import jwt
+from app.models import User
+from app.crud.user import get_user, add_new_user
+import os
 
-from abc import ABC, abstractmethod
-
+# === Base Strategy ===
 class AuthStrategy(ABC):
     @abstractmethod
-    def login(self, request_data):
+    def login(self, context: dict):
         pass
+
     @abstractmethod
-    def signup(self, request_data):
+    def signup(self, context: dict):
         pass
 
 
+# === Email/Password Strategy ===
 class EmailPasswordAuth(AuthStrategy):
-    def login(session, login_request_data):
-        user = get_user(session, login_request_data.email)
+    SECRET_KEY = os.getenv("AUTH_SECRET_KEY")
 
-        if bcrypt.checkpw(login_request_data.password.encode("utf-8"), user.hashed_password.encode("utf-8")):
-            jwtToken = EmailPasswordAuth.generate_JWT_token(user)
-            return jwtToken
-        raise Exception("Wrong Password!")
+    def login(self, context: dict):
+        session = context.get("session")
+        email = context.get("email")
+        password = context.get("password")
 
-    def signup(session, userName, password):
-        hashed_password = EmailPasswordAuth.hash_password(password)
+        user = get_user(session, email)
+        if not user:
+            raise Exception("User not found")
+
+        if bcrypt.checkpw(password.encode("utf-8"), user.hashed_password.encode("utf-8")):
+            return {"token": self.generate_JWT(user)}
+
+        raise Exception("Wrong password!")
+
+    def signup(self, context: dict):
+        session = context.get("session")
+        email = context.get("email")
+        password = context.get("password")
+
+        hashed_password = self.hash_password(password)
+
         try:
-            new_user = add_new_user(session, userName, hashed_password)
+            new_user = add_new_user(session, email, hashed_password)
         except Exception as e:
             raise e
-        
-        jwtToken = EmailPasswordAuth.generate_JWT(new_user)
-        return jwtToken
 
-    @staticmethod
-    def generate_JWT(user: User):
+        return {"token": self.generate_JWT(new_user)}
+
+    def generate_JWT(self, user: User):
         payload = {
-            "sub": user.id,  # subject
-            "name": user.name,
-            "iat": datetime.datetime.now(datetime.timezone.utc),  # issued at
-            "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)  # expires in 1 day
+            "sub": str(user.id),
+            "email": user.email,
+            "iat": datetime.datetime.now(datetime.timezone.utc),
+            "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
         }
-        jwtToken = jwt.encode(payload=payload, key=EmailPasswordAuth.SECRET_KEY,  algorithm=("HS256"))
 
-        return jwtToken
-    
+        token = jwt.encode(payload=payload, key=EmailPasswordAuth.SECRET_KEY, algorithm="HS256")
+        return token 
 
     @staticmethod
     def verify_JWT(jwtToken):
         try:
-            jwt.decode(jwt=jwtToken, key=EmailPasswordAuth.SECRET_KEY, algorithms=("HS256"))
-        except jwt.ExpiredSignatureError:
-            print("Token Expired")
-        except jwt.InvalidTokenError:
-            print("Invalid Token")
-
+            return jwt.decode(jwt=jwtToken, key=EmailPasswordAuth.SECRET_KEY, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError as e:
+            print(e)
+        except jwt.InvalidTokenError as e:
+            print(e)
     @staticmethod
     def hash_password(password: str) -> str:
         salt = bcrypt.gensalt()
-        hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
-        return hashed.decode("utf-8")
+        return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
+
+# === Google Auth Strategy ===
 class GoogleAuth(AuthStrategy):
-    def login(self, request_data):
-        token = request_data.get("google_token")
+    def login(self, context: dict):
+        token = context.get("google_token")
         # TODO: Use Google API to verify token
         if token == "valid_token":
             return {"status": "success", "user_id": 99}
         return {"status": "fail", "reason": "Invalid token"}
 
+    def signup(self, context: dict):
+        raise NotImplementedError("Google signup not supported (yet)")
+
+
+# === Context Class ===
 class AuthContext:
     def __init__(self, provider: str):
-        
-        if(provider == "IN_HOUSE"):
+        if provider == "IN_HOUSE":
             self.strategy = EmailPasswordAuth()
-        elif(provider == "GOOGLE"):
+        elif provider == "GOOGLE":
             self.strategy = GoogleAuth()
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"Auth provider '{provider}' not supported.")
 
-    def login(self, sql_db_session, request_data):
-        return self.strategy.login(sql_db_session, request_data)
-    
-    def signup(self, sql_db_session, request_data):
-        return self.strategy.signup(sql_db_session, request_data)
+    def login(self, context: dict):
+        return self.strategy.login(context)
 
+    def signup(self, context: dict):
+        return self.strategy.signup(context)

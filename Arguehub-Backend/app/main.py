@@ -1,20 +1,33 @@
+from dotenv import load_dotenv
+from pathlib import Path
+env_status = load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", verbose=True)
+print(env_status)
 from fastapi import FastAPI
 import uvicorn
 
-from api.v1.auth import router as auth_router
+from app.api.auth import router as auth_router
+from sqlalchemy.ext.declarative import declarative_base
+import os
+
+from app.database.main import Base, engine
+
 
 # print("\n".join(router.path))
 
-app = FastAPI()
-app.include_router(auth_router)
-
-@app.get("/heartbeat")
-async def root():
-    return {"message": "hello world"}
 
 
 def main():
-    uvicorn.run(app, host="127.0.0.1", port=8004)
+    app = FastAPI()
+
+    @app.get("/heartbeat")
+    async def heartbeat():
+        return {"message": "hello world"}
+
+    app.include_router(auth_router)
+
+    # Base.metadata.create_all(engine) #TODO: remove for prod
+    uvicorn.run(app, host="127.0.0.1", port=int(os.getenv("PORT")))
+
 
 if __name__ == "__main__":
     main()
